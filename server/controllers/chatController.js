@@ -7,7 +7,22 @@ const accessChat = async (req, res) => {
   if (!userId) return res.status(400).json({ message: "UserId param not sent with request" });
 
   try {
-    // Check if chat exists between these two
+    // 1. Check Friendship Status Logic
+    // Users must be friends to chat
+    const friendship = await prisma.friendship.findFirst({
+        where: {
+            OR: [
+                { requesterId: req.user.id, addresseeId: userId, status: 'ACCEPTED' },
+                { requesterId: userId, addresseeId: req.user.id, status: 'ACCEPTED' }
+            ]
+        }
+    });
+
+    if (!friendship) {
+        return res.status(403).json({ message: "You must be friends to start a chat." });
+    }
+
+    // 2. Check if chat exists
     let isChat = await prisma.chat.findMany({
       where: {
         isGroup: false,

@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { Search, MoreVertical, MessageSquare } from 'lucide-react';
+import { Search, MoreVertical, MessageSquare, UserPlus, Users } from 'lucide-react';
 import NewChatModal from './NewChatModal';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -25,6 +25,8 @@ interface Chat {
 export default function Sidebar({ onSelectChat, selectedChatId }: { onSelectChat: (chat: any) => void, selectedChatId: string | null }) {
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [chats, setChats] = useState<Chat[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [showRequests, setShowRequests] = useState(false);
   const { user } = useAuth();
   const { socket } = useSocket();
 
@@ -37,16 +39,24 @@ export default function Sidebar({ onSelectChat, selectedChatId }: { onSelectChat
     }
   };
 
+  const fetchRequests = async () => {
+    try {
+        const { data } = await api.get('/friends/pending');
+        setRequests(data);
+    } catch (error) {
+        console.error("Failed to fetch requests", error);
+    }
+  };
+
   useEffect(() => {
     fetchChats();
-  }, [isNewChatOpen]); // Refetch when modal closes (potentially new chat created)
+    fetchRequests();
+  }, [isNewChatOpen]);
 
-  // Real-time update for sidebar (e.g. moving chat to top on new message)
+  // Real-time update for sidebar 
   useEffect(() => {
     if(!socket) return;
     const handleMessage = (newMessage: any) => {
-        // Simple logic: refetch chats to update order and last message
-        // A optimized version would update state locally
         fetchChats(); 
     };
     socket.on("receive_message", handleMessage);
@@ -55,6 +65,19 @@ export default function Sidebar({ onSelectChat, selectedChatId }: { onSelectChat
     };
   }, [socket]);
 
+  const acceptRequest = async (requestId: string, userId: string) => {
+    try {
+        await api.post('/friends/accept', { friendshipId: requestId });
+        // Create chat immediately? 
+        await api.post('/chat', { userId }); // Create chat
+        fetchRequests();
+        fetchChats();
+        setShowRequests(false);
+    } catch (error) {
+        console.error(error);
+    }
+  };
+
   const getChatName = (chat: Chat) => {
     if (chat.isGroup) return chat.name;
     const other = chat.participants.find(p => p.id !== user?.id);
@@ -62,7 +85,6 @@ export default function Sidebar({ onSelectChat, selectedChatId }: { onSelectChat
   };
   
   const getChatAvatar = (chat: Chat) => {
-    // Return avatar logic
      const other = chat.participants.find(p => p.id !== user?.id);
     return other?.username?.[0].toUpperCase() || "?";
   };
@@ -80,7 +102,7 @@ export default function Sidebar({ onSelectChat, selectedChatId }: { onSelectChat
             title="New Chat" 
             className="p-2 hover:bg-[#374248] rounded-full transition-colors"
           >
-            <MessageSquare size={20} />
+            <UserPlus size={20} />
           </button>
           <button title="Menu" className="p-2 hover:bg-[#374248] rounded-full transition-colors"><MoreVertical size={20} /></button>
         </div>
@@ -97,6 +119,36 @@ export default function Sidebar({ onSelectChat, selectedChatId }: { onSelectChat
           />
         </div>
       </div>
+
+       {/* Friend Request Notification */}
+      {requests.length > 0 && (
+        <div 
+            onClick={() => setShowRequests(!showRequests)}
+            className="bg-[#0b141a] p-3 cursor-pointer hover:bg-[#00a884]/10 transition-colors border-b border-[#222e35] flex items-center justify-between"
+        >
+            <div className="flex items-center gap-2 text-[#00a884]">
+                <Users size={20} />
+                <span className="font-medium text-sm">Friend Requests ({requests.length})</span>
+            </div>
+        </div>
+      )}
+
+      {/* Requests List Overlay or Inline */}
+      {showRequests && requests.length > 0 && (
+         <div className="bg-[#0b141a] border-b border-[#222e35]">
+            {requests.map(req => (
+                <div key={req.id} className="flex items-center justify-between p-3 border-b border-[#222e35] last:border-0 hover:bg-[#202c33]">
+                    <div className="text-[#e9edef] text-sm">{req.requester.username}</div>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); acceptRequest(req.id, req.requesterId); }}
+                        className="bg-[#00a884] text-[#111b21] px-3 py-1 rounded-full text-xs font-bold"
+                    >
+                        Accept
+                    </button>
+                </div>
+            ))}
+         </div>
+      )}
       
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -123,7 +175,7 @@ export default function Sidebar({ onSelectChat, selectedChatId }: { onSelectChat
                </div>
                <div className="flex justify-between items-center">
                  <p className="text-[#8696a0] text-sm truncate mr-2 overflow-hidden whitespace-nowrap">
-                   {lastMsg ? lastMsg.content : "Start a conversation"}
+                   {lastMsg ? (lastMsg.type === 'text' ? lastMsg.content : `[${lastMsg.type}]`) : "Start a conversation"}
                  </p>
                </div>
             </div>

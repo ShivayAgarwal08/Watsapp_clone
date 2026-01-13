@@ -1,9 +1,11 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MoreVertical, Paperclip, Mic, Smile, Send } from 'lucide-react';
+import { Search, MoreVertical, Paperclip, Mic, Smile, Send, FileText, Image as ImageIcon, Music } from 'lucide-react';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+
+const SERVER_URL = 'http://localhost:4000';
 
 export default function ChatArea({ chat }: { chat: any }) {
   const [messages, setMessages] = useState<any[]>([]);
@@ -11,6 +13,7 @@ export default function ChatArea({ chat }: { chat: any }) {
   const { user } = useAuth();
   const { socket } = useSocket();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchMessages = async () => {
     if(!chat) return;
@@ -31,7 +34,7 @@ export default function ChatArea({ chat }: { chat: any }) {
     if(!socket) return;
     const handleMessageReceived = (newMessageReceived: any) => {
         if (!chat || chat.id !== newMessageReceived.chatId) {
-            // Notification logic could go here
+            // Notification
         } else {
             setMessages((prev) => [...prev, newMessageReceived]);
         }
@@ -46,22 +49,58 @@ export default function ChatArea({ chat }: { chat: any }) {
      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if(!newMessage.trim()) return;
+  const sendMessage = async (content: string, type = "text", fileData: any = null) => {
+    if(!content && !fileData) return;
 
     try {
-      const { data } = await api.post('/message', {
-        content: newMessage,
-        chatId: chat.id
-      });
-      // Emit to socket immediately for optimism, or just wait for API?
-      // Our API doesn't emit 'message_received' to sender, so we append manually
+      const payload: any = {
+        content: content,
+        chatId: chat.id,
+        type: type
+      };
+      
+      if(fileData) {
+        payload.fileUrl = fileData.filePath;
+        payload.fileName = fileData.fileName;
+        payload.fileSize = fileData.fileSize;
+      }
+
+      const { data } = await api.post('/message', payload);
       setMessages([...messages, data]);
       socket?.emit('new_message', data);
       setNewMessage('');
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if(newMessage.trim()) sendMessage(newMessage);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const { data } = await api.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      // Determine type
+      let type = 'file';
+      if(file.type.startsWith('image')) type = 'image';
+      else if(file.type === 'application/pdf') type = 'pdf';
+      else if(file.type.startsWith('audio')) type = 'audio';
+      
+      sendMessage("", type, data);
+    } catch (error) {
+       console.error("Upload failed", error);
+       alert("File upload failed");
     }
   };
 
@@ -97,7 +136,33 @@ export default function ChatArea({ chat }: { chat: any }) {
               return (
                 <div key={msg.id || i} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[70%] md:max-w-[60%] lg:max-w-[50%] rounded-lg p-2 shadow-sm text-[#e9edef] text-sm relative ${isMe ? 'bg-[#005c4b] rounded-tr-none' : 'bg-[#202c33] rounded-tl-none'}`}>
-                     <p className="pb-4 pr-1">{msg.content}</p> {/* Pad for timestamp */}
+                     
+                     {/* Content based on type */}
+                     {msg.type === 'text' && <p className="pb-4 pr-1">{msg.content}</p>}
+                     
+                     {msg.type === 'image' && (
+                        <div className="mb-2 rounded overflow-hidden">
+                           <img src={SERVER_URL + msg.fileUrl} alt="Shared" className="max-w-full h-auto" />
+                        </div>
+                     )}
+
+                     {msg.type === 'pdf' && (
+                        <div className="flex items-center gap-3 bg-black/20 p-3 rounded mb-4 w-64">
+                           <FileText size={32} className="text-red-400" />
+                           <div className="flex-1 truncate">
+                              <p className="truncate text-sm">{msg.fileName}</p>
+                              <p className="text-xs opacity-70">PDF</p>
+                           </div>
+                           <a href={SERVER_URL + msg.fileUrl} target="_blank" rel="noreferrer" className="p-2 bg-[#2a3942] rounded-full">⬇</a>
+                        </div>
+                     )}
+
+                     {msg.type === 'audio' && (
+                        <div className="flex items-center gap-2 mb-4">
+                           <audio controls src={SERVER_URL + msg.fileUrl} className="w-64 h-8" />
+                        </div>
+                     )}
+                     
                      <span className={`absolute bottom-1 right-2 text-[10px] text-[#8696a0] flex items-center gap-1`}>
                        {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                        {isMe && (
@@ -113,9 +178,23 @@ export default function ChatArea({ chat }: { chat: any }) {
       </div>
 
       {/* Input */}
-      <form onSubmit={sendMessage} className="min-h-[62px] bg-[#202c33] flex items-center px-4 py-2 gap-2 z-10">
+      <form onSubmit={handleFormSubmit} className="min-h-[62px] bg-[#202c33] flex items-center px-4 py-2 gap-2 z-10">
          <button type="button" className="text-[#8696a0] p-2 hover:bg-[#374248] rounded-full"><Smile size={24} /></button>
-         <button type="button" className="text-[#8696a0] p-2 hover:bg-[#374248] rounded-full"><Paperclip size={24} /></button>
+         
+         <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            onChange={handleFileUpload} 
+            accept="image/*,.pdf,audio/*"
+        />
+         <button 
+            type="button" 
+            onClick={() => fileInputRef.current?.click()}
+            className="text-[#8696a0] p-2 hover:bg-[#374248] rounded-full"
+        >
+            <Paperclip size={24} />
+         </button>
          
          <div className="flex-1 bg-[#2a3942] rounded-lg flex items-center px-4 py-2">
            <input 

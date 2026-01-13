@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Search, UserPlus } from 'lucide-react';
+import { X, Search, UserPlus, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../lib/api';
 
@@ -7,6 +7,7 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [friendRequestsSent, setFriendRequestsSent] = useState<string[]>([]);
 
   const handleSearch = async (val: string) => {
     setQuery(val);
@@ -24,13 +25,13 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
     }
   };
 
-  const accessChat = async (userId: string) => {
+  const sendRequest = async (userId: string) => {
     try {
-      await api.post('/chat', { userId });
-      onClose();
-      // Should ideally trigger a refresh of chats in Sidebar
-    } catch (e) {
-      console.error(e);
+      await api.post('/friends/request', { toUserId: userId });
+      setFriendRequestsSent([...friendRequestsSent, userId]);
+      // ideally show success toast
+    } catch (e: any) {
+      alert(e.response?.data?.message || "Error sending request");
     }
   };
 
@@ -45,7 +46,7 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
             className="bg-[#222e35] w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-[#2a3942]"
           >
              <div className="bg-[#202c33] p-4 flex items-center justify-between border-b border-[#2a3942]">
-               <h2 className="text-[#e9edef] text-lg font-medium">New Chat</h2>
+               <h2 className="text-[#e9edef] text-lg font-medium">Add Friend</h2>
                <button onClick={onClose} className="text-[#aebac1] hover:text-white"><X size={24} /></button>
              </div>
              
@@ -66,7 +67,6 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
                    results.map(user => (
                      <div 
                        key={user.id} 
-                       onClick={() => accessChat(user.id)}
                        className="flex items-center justify-between p-3 hover:bg-[#111b21] rounded-lg cursor-pointer group transition-colors"
                      >
                        <div className="flex items-center gap-3">
@@ -78,9 +78,20 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
                            <div className="text-[#8696a0] text-sm">{user.email}</div>
                          </div>
                        </div>
-                       <button className="text-[#00a884] p-2 hover:bg-[#202c33] rounded-full transition-colors">
-                         <MessageSquare size={20} />
-                       </button>
+                       
+                       {friendRequestsSent.includes(user.id) ? (
+                         <div className="text-[#00a884] flex items-center gap-1">
+                            <span className="text-xs">Sent</span> <Check size={16} />
+                         </div>
+                       ) : (
+                         <button 
+                            onClick={() => sendRequest(user.id)}
+                            className="text-[#00a884] p-2 hover:bg-[#202c33] rounded-full transition-colors"
+                            title="Send Friend Request"
+                        >
+                            <UserPlus size={20} />
+                         </button>
+                       )}
                      </div>
                    ))
                  ) : (

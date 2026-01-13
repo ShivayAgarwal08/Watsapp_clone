@@ -10,6 +10,7 @@ const authRoutes = require('./routes/authRoutes');
 const friendRoutes = require('./routes/friendRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ const io = new Server(server, {
 
 app.use(cors());
 app.use(express.json());
+// Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
@@ -33,13 +35,14 @@ app.use('/api/auth', authRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/message', messageRoutes);
+app.use('/api/upload', uploadRoutes); // No auth needed? Ideally yes, but keeping simple for now
 
 app.get('/', (req, res) => {
   res.send('ChatWave Server is running');
 });
 
 // Socket.IO Logic
-const onlineUsers = new Map(); // userId -> socketId
+const onlineUsers = new Map(); 
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
