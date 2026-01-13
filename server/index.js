@@ -6,6 +6,11 @@ const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
 const path = require('path');
 
+const authRoutes = require('./routes/authRoutes');
+const friendRoutes = require('./routes/friendRoutes');
+const chatRoutes = require('./routes/chatRoutes');
+const messageRoutes = require('./routes/messageRoutes');
+
 dotenv.config();
 
 const app = express();
@@ -24,84 +29,71 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
-// app.use('/api/auth', authRoutes);
-// app.use('/api/chat', chatRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/friends', friendRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/message', messageRoutes);
 
 app.get('/', (req, res) => {
   res.send('ChatWave Server is running');
 });
 
-// Socket.IO State
+// Socket.IO Logic
 const onlineUsers = new Map(); // userId -> socketId
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('authenticate', async (userId) => {
-    if(!userId) return;
-    onlineUsers.set(userId, socket.id);
-    socket.join(userId); // Join a room with their own ID for private events
+  socket.on('setup', (userData) => {
+    if(!userData?.id) return;
+    socket.join(userData.id);
+    onlineUsers.set(userData.id, socket.id);
+    console.log("User Setup:", userData.id);
+    socket.emit("connected");
     
-    // Broadcast online status
-    io.emit('presence_update', { userId, isOnline: true });
-    
-    try {
-      await prisma.user.update({
-        where: { id: userId },
+    // Broadcast status
+    io.emit('presence_update', { userId: userData.id, isOnline: true });
+    prisma.user.update({
+        where: { id: userData.id },
         data: { isOnline: true }
-      });
-    } catch (e) {
-      console.error("Error updating online status:", e);
-    }
+    }).catch(err => console.error(err));
   });
 
-  socket.on('send_message', async (data) => {
-    // data: { chatId, senderId, content, type, ... }
-    // Ideally we assume the message is already saved via API, and we are just emitting it.
-    // Or we save it here. Saving via API is cleaner for error handling.
-    // Let's assume API emits 'new_message' via IO.
-    
-    // But for real-time typing:
+  socket.on('join_chat', (room) => {
+    socket.join(room);
+    console.log("User joined room: " + room);
   });
 
-  socket.on('typing', ({ chatId, userId }) => {
-    socket.to(chatId).emit('typing', { chatId, userId });
+  socket.on('typing', (room) => socket.in(room).emit("typing"));
+  socket.on('stop_typing', (room) => socket.in(room).emit("stop_typing"));
+
+  socket.on('new_message', (newMessageReceived) => {
+    var chat = newMessageReceived.chat;
+    if(!chat.participants) return console.log("chat.participants not defined");
+
+    chat.participants.forEach(user => {
+      if(user.id == newMessageReceived.senderId) return;
+      socket.in(user.id).emit("message_received", newMessageReceived);
+    });
   });
 
-  socket.on('stop_typing', ({ chatId, userId }) => {
-    socket.to(chatId).emit('stop_typing', { chatId, userId });
-  });
-  
-  socket.on('join_chat', (chatId) => {
-    socket.join(chatId);
-  });
+  socket.on('disconnect', () => {
+    let outputId = null;
+    onlineUsers.forEach((value, key) => {
+        if(value === socket.id) outputId = key;
+    });
 
-  socket.on('disconnect', async () => {
-    let disconnectedUserId = null;
-    for (const [uid, sid] of onlineUsers.entries()) {
-      if (sid === socket.id) {
-        disconnectedUserId = uid;
-        break;
-      }
-    }
-    
-    if (disconnectedUserId) {
-      onlineUsers.delete(disconnectedUserId);
-      io.emit('presence_update', { userId: disconnectedUserId, isOnline: false });
-      
-      try {
-        await prisma.user.update({
-          where: { id: disconnectedUserId },
+    if (outputId) {
+       onlineUsers.delete(outputId);
+       io.emit('presence_update', { userId: outputId, isOnline: false });
+       prisma.user.update({
+          where: { id: outputId },
           data: { isOnline: false, lastSeen: new Date() }
-        });
-      } catch (e) {
-        console.error("Error updating offline status:", e);
-      }
+       }).catch(err => console.error(err));
     }
   });
 });
 
-// Make io accessible to routes
 app.set('io', io);
 
 const PORT = process.env.PORT || 4000;
