@@ -1,16 +1,38 @@
 import React, { useState } from 'react';
 import { X, Search, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import api from '../lib/api';
 
 export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Mock search results
-  const results = query ? [
-    { id: '10', username: 'john_doe', email: 'john@example.com' },
-    { id: '11', username: 'sarah_smith', email: 'sarah@example.com' },
-    { id: '12', username: 'mike_ross', email: 'mike@example.com' },
-  ] : [];
+  const handleSearch = async (val: string) => {
+    setQuery(val);
+    if(val.length > 1) {
+      setLoading(true);
+      try {
+        const { data } = await api.get(\`/auth/search?query=\${val}\`);
+        setResults(data);
+      } catch (err) {
+        console.error(err);
+      }
+      setLoading(false);
+    } else {
+      setResults([]);
+    }
+  };
+
+  const accessChat = async (userId: string) => {
+    try {
+      await api.post('/chat', { userId });
+      onClose();
+      // Should ideally trigger a refresh of chats in Sidebar
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -33,7 +55,7 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
                  <input 
                    autoFocus
                    value={query}
-                   onChange={(e) => setQuery(e.target.value)}
+                   onChange={(e) => handleSearch(e.target.value)}
                    className="bg-transparent flex-1 text-[#d1d7db] placeholder-[#8696a0] focus:outline-none" 
                    placeholder="Search name or email"
                  />
@@ -42,7 +64,11 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
                <div className="space-y-2 min-h-[200px]">
                  {results.length > 0 ? (
                    results.map(user => (
-                     <div key={user.id} className="flex items-center justify-between p-3 hover:bg-[#111b21] rounded-lg cursor-pointer group transition-colors">
+                     <div 
+                       key={user.id} 
+                       onClick={() => accessChat(user.id)}
+                       className="flex items-center justify-between p-3 hover:bg-[#111b21] rounded-lg cursor-pointer group transition-colors"
+                     >
                        <div className="flex items-center gap-3">
                          <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                            {user.username[0].toUpperCase()}
@@ -52,19 +78,13 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
                            <div className="text-[#8696a0] text-sm">{user.email}</div>
                          </div>
                        </div>
-                       <button className="text-[#00a884] p-2 hover:bg-[#202c33] rounded-full transition-colors" title="Send Friend Request">
-                         <UserPlus size={20} />
+                       <button className="text-[#00a884] p-2 hover:bg-[#202c33] rounded-full transition-colors">
+                         <MessageSquare size={20} />
                        </button>
                      </div>
                    ))
                  ) : (
-                   query && <p className="text-center text-[#8696a0] py-4">No users found</p>
-                 )}
-                 {!query && (
-                    <div className="flex flex-col items-center justify-center h-[200px] text-[#8696a0] text-sm gap-2">
-                      <Search size={48} className="opacity-20 mb-2" />
-                      <p>Search for people to add them to your friends list.</p>
-                    </div>
+                   query && !loading && <p className="text-center text-[#8696a0] py-4">No users found</p>
                  )}
                </div>
              </div>
