@@ -35,7 +35,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/message', messageRoutes);
-app.use('/api/upload', uploadRoutes); // No auth needed? Ideally yes, but keeping simple for now
+app.use('/api/upload', uploadRoutes);
 
 app.get('/', (req, res) => {
   res.send('ChatWave Server is running');
@@ -51,7 +51,6 @@ io.on('connection', (socket) => {
     if(!userData?.id) return;
     socket.join(userData.id);
     onlineUsers.set(userData.id, socket.id);
-    console.log("User Setup:", userData.id);
     socket.emit("connected");
     
     // Broadcast status
@@ -64,20 +63,29 @@ io.on('connection', (socket) => {
 
   socket.on('join_chat', (room) => {
     socket.join(room);
-    console.log("User joined room: " + room);
   });
 
-  socket.on('typing', (room) => socket.in(room).emit("typing"));
-  socket.on('stop_typing', (room) => socket.in(room).emit("stop_typing"));
+  socket.on('typing', ({ chatId, username }) => {
+    socket.in(chatId).emit("typing", { chatId, username });
+  });
+  
+  socket.on('stop_typing', (chatId) => {
+    socket.in(chatId).emit("stop_typing", chatId);
+  });
 
   socket.on('new_message', (newMessageReceived) => {
     var chat = newMessageReceived.chat;
-    if(!chat.participants) return console.log("chat.participants not defined");
+    if(!chat.participants) return;
 
     chat.participants.forEach(user => {
       if(user.id == newMessageReceived.senderId) return;
       socket.in(user.id).emit("message_received", newMessageReceived);
     });
+  });
+
+  socket.on('new_reaction', (reactionData) => {
+     // reactionData: { chatId, messageId, reaction, type }
+     socket.in(reactionData.chatId).emit("reaction_received", reactionData);
   });
 
   socket.on('disconnect', () => {
@@ -99,7 +107,7 @@ io.on('connection', (socket) => {
 
 app.set('io', io);
 
-const PORT = process.env.PORT || 4000;
+const PORT = 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
