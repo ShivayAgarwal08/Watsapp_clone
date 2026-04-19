@@ -14,7 +14,7 @@ export default function NewChatModal({ isOpen, onClose }: { isOpen: boolean; onC
     if(val.length > 1) {
       setLoading(true);
       try {
-        const { data } = await api.get(\`/auth/search?query=\${val}\`);
+        const { data } = await api.get(`/auth/search?query=${val}`);
         setResults(data);
       } catch (err) {
         console.error(err);

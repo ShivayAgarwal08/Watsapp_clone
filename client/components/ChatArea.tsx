@@ -22,7 +22,7 @@ export default function ChatArea({ chat }: { chat: any }) {
   const fetchMessages = async () => {
     if(!chat) return;
     try {
-      const { data } = await api.get(\`/message/\${chat.id}\`);
+      const { data } = await api.get(`/message/${chat.id}`);
       setMessages(data);
       socket?.emit('join_chat', chat.id);
     } catch (error) {

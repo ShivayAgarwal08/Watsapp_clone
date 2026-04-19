@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 
-const ENDPOINT = 'http://localhost:4000';
+const ENDPOINT = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 interface SocketContextType {
   socket: Socket | null;

@@ -18,14 +18,16 @@ const app = express();
 const server = http.createServer(app);
 const prisma = new PrismaClient();
 
+const CLIENT_URL = process.env.CLIENT_URL || "*";
+
 const io = new Server(server, {
   cors: {
-    origin: "*", 
+    origin: CLIENT_URL, 
     methods: ["GET", "POST"]
   }
 });
 
-app.use(cors());
+app.use(cors({ origin: CLIENT_URL }));
 app.use(express.json());
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -107,7 +109,7 @@ io.on('connection', (socket) => {
 
 app.set('io', io);
 
-const PORT = 4000;
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
